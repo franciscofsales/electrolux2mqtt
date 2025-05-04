@@ -442,13 +442,10 @@ export class ElectroluxApiClient extends ApiClient {
  */
 export function createElectroluxApiClientFromEnv(): ElectroluxApiClient {
   // Required environment variables
-  const apiUrl = process.env.ELECTROLUX_API_URL;
+  const apiUrl = process.env.ELECTROLUX_API_URL || 'https://api.developer.electrolux.one';
   const apiKey = process.env.ELECTROLUX_API_KEY;
   const refreshToken = process.env.ELECTROLUX_REFRESH_TOKEN;
 
-  if (!apiUrl) {
-    throw new Error('ELECTROLUX_API_URL environment variable is required');
-  }
   if (!apiKey) {
     throw new Error('ELECTROLUX_API_KEY environment variable is required');
   }
