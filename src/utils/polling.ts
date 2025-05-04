@@ -5,6 +5,8 @@
 import logger from './logger.js';
 import { MqttConnector } from './mqtt.js';
 import { ApiClient, ApiResponse } from './api.js';
+import { HomeAssistantService } from '../services/homeAssistant.js';
+import { ElectroluxApiResponse } from '../services/types.js';
 
 export interface PollingServiceConfig {
   intervalSeconds: number;
@@ -16,13 +18,20 @@ export class PollingService {
   private readonly mqtt: MqttConnector;
   private readonly api: ApiClient;
   private readonly config: PollingServiceConfig;
+  private readonly homeAssistant: HomeAssistantService | null;
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
 
-  constructor(mqtt: MqttConnector, api: ApiClient, config: PollingServiceConfig) {
+  constructor(
+    mqtt: MqttConnector,
+    api: ApiClient,
+    config: PollingServiceConfig,
+    homeAssistant: HomeAssistantService | null = null
+  ) {
     this.mqtt = mqtt;
     this.api = api;
     this.config = config;
+    this.homeAssistant = homeAssistant;
   }
 
   /**
@@ -97,6 +106,12 @@ export class PollingService {
           topic = `${this.config.topicPrefix}/${data.applianceId}`;
           await this.mqtt.publish(topic, JSON.stringify(data));
           logger.info(`Published data for ${data.name || data.applianceId} to MQTT`, { topic });
+
+          // Send data to Home Assistant if enabled
+          if (this.homeAssistant) {
+            // Process data with homeAssistant (casting to ElectroluxApiResponse to match expected type)
+            await this.homeAssistant.processApplianceData(data as ElectroluxApiResponse);
+          }
         } else {
           // Fallback to general data topic
           topic = `${this.config.topicPrefix}/data`;
@@ -116,11 +131,8 @@ export class PollingService {
           connected: device.connected || false,
         })),
       };
-      
-      await this.mqtt.publish(
-        `${this.config.topicPrefix}/data`,
-        JSON.stringify(summaryData)
-      );
+
+      await this.mqtt.publish(`${this.config.topicPrefix}/data`, JSON.stringify(summaryData));
       logger.debug(`Published summary data`, { message: JSON.stringify(summaryData) });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -132,7 +144,11 @@ export class PollingService {
 /**
  * Create a polling service from environment variables
  */
-export function createPollingServiceFromEnv(mqtt: MqttConnector, api: ApiClient): PollingService {
+export function createPollingServiceFromEnv(
+  mqtt: MqttConnector,
+  api: ApiClient,
+  homeAssistant: HomeAssistantService | null = null
+): PollingService {
   // Get polling interval from environment variable with default fallback
   const intervalSecondsStr = process.env.POLLING_INTERVAL_SECONDS || '30';
   const intervalSeconds = parseInt(intervalSecondsStr, 10);
@@ -145,9 +161,14 @@ export function createPollingServiceFromEnv(mqtt: MqttConnector, api: ApiClient)
   // Use mock data if API_USE_MOCK is set to "true"
   const useMockData = process.env.API_USE_MOCK === 'true';
 
-  return new PollingService(mqtt, api, {
-    intervalSeconds: isNaN(intervalSeconds) || intervalSeconds < 5 ? 30 : intervalSeconds,
-    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'electrolux2mqtt',
-    useMockData,
-  });
+  return new PollingService(
+    mqtt,
+    api,
+    {
+      intervalSeconds: isNaN(intervalSeconds) || intervalSeconds < 5 ? 30 : intervalSeconds,
+      topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'electrolux2mqtt',
+      useMockData,
+    },
+    homeAssistant
+  );
 }

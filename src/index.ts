@@ -3,6 +3,7 @@ import { createMqttConnectorFromEnv } from './utils/mqtt.js';
 import { createApiClientFromEnv } from './utils/api.js';
 import { createElectroluxApiClientFromEnv } from './services/electrolux.js';
 import { createPollingServiceFromEnv } from './utils/polling.js';
+import { createHomeAssistantServiceFromEnv } from './services/homeAssistant.js';
 
 // Load environment variables is done through Node.js directly
 // We don't use dotenv in production to avoid bundling issues
@@ -63,8 +64,14 @@ async function startService(): Promise<void> {
       }
     }
 
+    // Initialize Home Assistant integration if enabled
+    const homeAssistantService = createHomeAssistantServiceFromEnv(mqttClient, apiClient);
+    if (homeAssistantService) {
+      await homeAssistantService.initialize();
+    }
+
     // Create and start polling service
-    const pollingService = createPollingServiceFromEnv(mqttClient, apiClient);
+    const pollingService = createPollingServiceFromEnv(mqttClient, apiClient, homeAssistantService);
     pollingService.start();
 
     logger.info('Electrolux2MQTT service is now running');

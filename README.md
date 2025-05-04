@@ -176,7 +176,7 @@ The service publishes data for each appliance to individual topics:
 }
 ```
 
-## Environment Variables
+### Environment Variables
 
 ### Application Settings
 - `NODE_ENV`: Node.js environment (development/production)
@@ -204,6 +204,65 @@ The service publishes data for each appliance to individual topics:
 - `ELECTROLUX_BRAND`: Appliance brand (default: electrolux)
 - `ELECTROLUX_COUNTRY_CODE`: Country code for regional settings (default: US)
 
+### Home Assistant Integration Settings
+- `HOME_ASSISTANT_ENABLED`: Set to 'true' to enable Home Assistant MQTT discovery (default: false)
+- `HOME_ASSISTANT_DISCOVERY_PREFIX`: MQTT discovery prefix (default: homeassistant)
+- `HOME_ASSISTANT_NODE_ID`: Node ID for the integration (default: electrolux2mqtt)
+
+## Home Assistant Integration
+
+This service includes automatic integration with Home Assistant via MQTT discovery. When enabled, it will:
+
+1. Create device entities in Home Assistant automatically for each Electrolux appliance
+2. Create appropriate sensors based on the capabilities of each appliance
+3. Manage entity availability based on connection status
+
+### Enabling the Integration
+
+To enable Home Assistant integration, set the following environment variable:
+
+```
+HOME_ASSISTANT_ENABLED=true
+```
+
+This will automatically create entities in Home Assistant for all your Electrolux appliances when they are discovered.
+
+### Generated Entities
+
+Based on the appliance type, the integration will create appropriate entities such as:
+
+- Connection status (online/offline)
+- Temperature sensors (refrigerator, freezer, etc.)
+- Humidity sensors (if applicable)
+- Program status and remaining time (for washers, dryers, dishwashers)
+- Status information
+- Other relevant sensors based on available state data
+
+All entities are automatically categorized and include appropriate device classes, units of measurement, and icons.
+
+### Device Examples in Home Assistant
+
+#### Refrigerator
+A refrigerator will appear in Home Assistant with sensors such as:
+
+- Refrigerator Temperature (°C)
+- Freezer Temperature (°C)
+- Connection Status (connected/disconnected)
+- Door State (open/closed)
+- Eco Mode (on/off)
+
+#### Washing Machine
+A washing machine will include:
+
+- Program Status (idle, washing, rinsing, spinning, etc.)
+- Remaining Time (minutes)
+- Connection Status (connected/disconnected)
+- Door Lock (locked/unlocked)
+
+### Home Assistant Dashboard Example
+
+The discovered entities can be used in Home Assistant dashboards to create a comprehensive view of your Electrolux appliances, allowing you to monitor their status and receive notifications about important events.
+
 ## How the Electrolux Integration Works
 
 This service uses the official Electrolux One API to communicate with your Electrolux connected appliances. The integration:
@@ -222,10 +281,15 @@ The service is designed to be extensible, so you can modify or enhance the Elect
 
 ```
 ├── src/                    # TypeScript source files
+│   ├── services/           # Service implementations
+│   │   ├── electrolux.ts   # Electrolux API client
+│   │   ├── homeAssistant.ts # Home Assistant integration
+│   │   ├── mock.ts         # Mock data service
+│   │   └── types.ts        # Type definitions
 │   ├── utils/              # Utility modules
 │   │   ├── logger.ts       # Custom logger implementation
 │   │   ├── mqtt.ts         # MQTT client implementation
-│   │   ├── api.ts          # API client implementation (customize for Electrolux)
+│   │   ├── api.ts          # API client implementation
 │   │   └── polling.ts      # Polling service implementation
 │   └── index.ts            # Application entry point
 ├── dist/                   # Compiled JavaScript output
