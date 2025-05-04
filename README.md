@@ -193,6 +193,8 @@ As this project is in its early stages, contributions are welcome! Please be awa
 - Add comprehensive test suite
 - Enhance Home Assistant integration
 - Support for sending commands to appliances (when API allows)
+- Add CI/CD pipeline
+- Publish to dockerhub a pre-built image
 
 ## License
 
