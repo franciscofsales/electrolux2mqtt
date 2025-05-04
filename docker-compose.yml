@@ -1,27 +1,29 @@
 services:
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: electrolux2mqtt
-  #   restart: unless-stopped
-  #   environment:
-  #     - NODE_ENV=production
-  #     - LOG_LEVEL=debug
-  #     # MQTT Configuration - Using local broker with Docker Compose networking
-  #     - MQTT_HOST=mqtt-broker
-  #     - MQTT_PORT=1883
-  #     - MQTT_PROTOCOL=mqtt
-  #     - MQTT_CLIENT_ID=electrolux2mqtt_prod
-  #     - MQTT_TOPIC_PREFIX=electrolux2mqtt
-  #     - MQTT_CONNECT_TIMEOUT=15000
-  #     # API Configuration
-  #     # - API_USE_MOCK=true
-  #     # - API_URL=https://api.example.com
-  #     # Polling Configuration
-  #     - POLLING_INTERVAL_SECONDS=30
-  #   depends_on:
-  #     - mqtt-broker
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: electrolux2mqtt
+    restart: unless-stopped
+    volumes:
+      - ./config:/config
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=debug
+      # MQTT Configuration - Using local broker with Docker Compose networking
+      - MQTT_HOST=mqtt-broker
+      - MQTT_PORT=1883
+      - MQTT_PROTOCOL=mqtt
+      - MQTT_CLIENT_ID=electrolux2mqtt_prod
+      - MQTT_TOPIC_PREFIX=electrolux2mqtt
+      - MQTT_CONNECT_TIMEOUT=15000
+      # API Configuration
+      # - API_USE_MOCK=true
+      # - API_URL=https://api.example.com
+      # Polling Configuration
+      - POLLING_INTERVAL_SECONDS=30
+    depends_on:
+      - mqtt-broker
 
   # Local MQTT broker
   mqtt-broker:
@@ -57,4 +59,4 @@ services:
 #       - API_USE_MOCK=true
 #       - API_URL=https://api.example.com
 #       # Polling Configuration
-#       - POLLING_INTERVAL_SECONDS=60
+#       - POLLING_INTERVAL_SECONDS=30
