@@ -1,6 +1,5 @@
 node_modules
 npm-debug.log
-dist
 .git
 .gitignore
 .env
@@ -9,7 +8,13 @@ dist
 .idea
 README.md
 .dockerignore
-Dockerfile
+Docker*
 docker-compose.yml
 config
 mosquitto
+src
+build.js
+tsconfig.json
+.github
+.prettierrc
+eslint.config.js
