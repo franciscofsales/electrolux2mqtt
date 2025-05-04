@@ -1,0 +1,61 @@
+services:
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: electrolux2mqtt
+  #   restart: unless-stopped
+  #   environment:
+  #     - NODE_ENV=production
+  #     - LOG_LEVEL=debug
+  #     # MQTT Configuration - Using local broker with Docker Compose networking
+  #     - MQTT_HOST=mqtt-broker
+  #     - MQTT_PORT=1883
+  #     - MQTT_PROTOCOL=mqtt
+  #     - MQTT_CLIENT_ID=electrolux2mqtt_prod
+  #     - MQTT_TOPIC_PREFIX=electrolux2mqtt
+  #     - MQTT_CONNECT_TIMEOUT=15000
+  #     # API Configuration
+  #     # - API_USE_MOCK=true
+  #     # - API_URL=https://api.example.com
+  #     # Polling Configuration
+  #     - POLLING_INTERVAL_SECONDS=30
+  #   depends_on:
+  #     - mqtt-broker
+
+  # Local MQTT broker
+  mqtt-broker:
+    image: eclipse-mosquitto:latest
+    container_name: mqtt-broker
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+    ports:
+      - '1883:1883' # MQTT protocol port (for external clients)
+
+# Alternative configuration using public MQTT broker (HiveMQ)
+# Uncomment this and comment out the above to use HiveMQ
+#
+# services:
+#   app:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: electrolux2mqtt
+#     restart: unless-stopped
+#     environment:
+#       - NODE_ENV=production
+#       - LOG_LEVEL=debug
+#       # Use a public MQTT broker for testing
+#       - MQTT_HOST=broker.hivemq.com
+#       - MQTT_PORT=1883
+#       - MQTT_PROTOCOL=mqtt
+#       - MQTT_CLIENT_ID=electrolux2mqtt_test
+#       - MQTT_TOPIC_PREFIX=electrolux2mqtt_test
+#       - MQTT_CONNECT_TIMEOUT=15000
+#       # API Configuration
+#       - API_USE_MOCK=true
+#       - API_URL=https://api.example.com
+#       # Polling Configuration
+#       - POLLING_INTERVAL_SECONDS=60
