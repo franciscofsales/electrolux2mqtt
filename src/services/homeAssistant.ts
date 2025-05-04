@@ -1,6 +1,6 @@
 /**
  * Home Assistant MQTT integration service
- * 
+ *
  * This service provides Home Assistant MQTT auto-discovery and state updates
  * for Electrolux appliances. It will only be enabled when the HOME_ASSISTANT_ENABLED
  * environment variable is set.
@@ -80,7 +80,9 @@ export class HomeAssistantService {
   /**
    * Process incoming appliance data and publish to Home Assistant
    */
-  public async processApplianceData(data: ElectroluxApiResponse | ElectroluxApiResponse[]): Promise<void> {
+  public async processApplianceData(
+    data: ElectroluxApiResponse | ElectroluxApiResponse[]
+  ): Promise<void> {
     if (!this.config.enabled) return;
 
     // Handle array of appliances or single appliance
@@ -115,7 +117,10 @@ export class HomeAssistantService {
         name: appliance.name || `Electrolux ${appliance.info.deviceType}`,
         manufacturer: 'Electrolux',
         model: `${appliance.info.modelName || 'Unknown'}${appliance.info.variant ? ` (${appliance.info.variant})` : ''}`,
-        sw_version: appliance.state?.applianceMainBoardSwVersion || appliance.state?.applianceUiSwVersion || '1.0.0',
+        sw_version:
+          appliance.state?.applianceMainBoardSwVersion ||
+          appliance.state?.applianceUiSwVersion ||
+          '1.0.0',
         via_device: this.config.nodeId,
       };
 
@@ -156,7 +161,7 @@ export class HomeAssistantService {
       icon: 'mdi:wifi',
       component: 'binary_sensor',
     });
-    
+
     // Create a device status sensor that aggregates key information
     await this.createSensor({
       applianceId,
@@ -164,9 +169,10 @@ export class HomeAssistantService {
       name: 'Device Status',
       uniqueId: `${applianceId}_device_status`,
       stateTopic,
-      valueTemplate: appliance.info.deviceType === 'TUMBLE_DRYER'
-        ? '{{ value_json.applianceState + (value_json.doorState ? " (Door " + value_json.doorState + ")" : "") }}'
-        : '{{ value_json.status || value_json.applianceState || "Unknown" }}',
+      valueTemplate:
+        appliance.info.deviceType === 'TUMBLE_DRYER'
+          ? '{{ value_json.applianceState + (value_json.doorState ? " (Door " + value_json.doorState + ")" : "") }}'
+          : '{{ value_json.status || value_json.applianceState || "Unknown" }}',
       icon: 'mdi:information',
       component: 'sensor',
     });
@@ -215,9 +221,10 @@ export class HomeAssistantService {
         name: 'Program',
         uniqueId: `${applianceId}_program`,
         stateTopic,
-        valueTemplate: appliance.info.deviceType === 'TUMBLE_DRYER' 
-          ? '{{ value_json.userSelections.programUID }}' 
-          : '{{ value_json.program }}',
+        valueTemplate:
+          appliance.info.deviceType === 'TUMBLE_DRYER'
+            ? '{{ value_json.userSelections.programUID }}'
+            : '{{ value_json.program }}',
         icon: 'mdi:washing-machine',
         component: 'sensor',
       });
@@ -229,24 +236,29 @@ export class HomeAssistantService {
         name: 'Status',
         uniqueId: `${applianceId}_status`,
         stateTopic,
-        valueTemplate: appliance.info.deviceType === 'TUMBLE_DRYER' 
-          ? '{{ value_json.applianceState }}' 
-          : '{{ value_json.status }}',
+        valueTemplate:
+          appliance.info.deviceType === 'TUMBLE_DRYER'
+            ? '{{ value_json.applianceState }}'
+            : '{{ value_json.status }}',
         icon: 'mdi:information-outline',
         component: 'sensor',
       });
 
       // Create remaining time sensor if available
-      if (state.remainingTime !== undefined || (state.timeToEnd !== undefined && appliance.info.deviceType === 'TUMBLE_DRYER')) {
+      if (
+        state.remainingTime !== undefined ||
+        (state.timeToEnd !== undefined && appliance.info.deviceType === 'TUMBLE_DRYER')
+      ) {
         await this.createSensor({
           applianceId,
           deviceInfo,
           name: 'Remaining Time',
           uniqueId: `${applianceId}_remaining_time`,
           stateTopic,
-          valueTemplate: appliance.info.deviceType === 'TUMBLE_DRYER' 
-            ? '{{ value_json.timeToEnd | int / 60 }}' 
-            : '{{ value_json.remainingTime }}',
+          valueTemplate:
+            appliance.info.deviceType === 'TUMBLE_DRYER'
+              ? '{{ value_json.timeToEnd | int / 60 }}'
+              : '{{ value_json.remainingTime }}',
           unitOfMeasurement: 'min',
           icon: 'mdi:timer-outline',
           component: 'sensor',
@@ -283,7 +295,7 @@ export class HomeAssistantService {
           component: 'sensor',
         });
       }
-      
+
       // Humidity target sensor
       if (state.userSelections?.humidityTarget !== undefined) {
         await this.createSensor({
@@ -422,7 +434,7 @@ export class HomeAssistantService {
     // Convert camelCase to Title Case with Spaces
     return propertyName
       .replace(/([A-Z])/g, ' $1') // Insert a space before all caps
-      .replace(/^./, (str) => str.toUpperCase()) // Uppercase the first character
+      .replace(/^./, str => str.toUpperCase()) // Uppercase the first character
       .trim(); // Remove leading/trailing spaces
   }
 
@@ -460,13 +472,15 @@ export function createHomeAssistantServiceFromEnv(
   const enabled = process.env.HOME_ASSISTANT_ENABLED === 'true';
 
   if (!enabled) {
-    logger.info('Home Assistant integration is disabled. Set HOME_ASSISTANT_ENABLED=true to enable.');
+    logger.info(
+      'Home Assistant integration is disabled. Set HOME_ASSISTANT_ENABLED=true to enable.'
+    );
     return null;
   }
 
   // Get Home Assistant configuration from environment variables
   const discoveryPrefix = process.env.HOME_ASSISTANT_DISCOVERY_PREFIX || 'homeassistant';
-  const nodeId = process.env.HOME_ASSISTANT_NODE_ID || 'electrolux2mqtt';
+  const nodeId = process.env.HOME_ASSISTANT_NODE_ID || 'homeassistant';
   const statusTopic = `${nodeId}/status`;
 
   return new HomeAssistantService(mqtt, api, {
