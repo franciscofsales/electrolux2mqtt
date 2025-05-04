@@ -25,7 +25,26 @@ class Logger {
     
     if (levels[level] >= levels[this.level]) {
       const timestamp = this.getTimestamp();
-      const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+      
+      // Better error handling for data objects
+      let dataStr = '';
+      if (data) {
+        if (data instanceof Error) {
+          dataStr = ` Error: ${data.message}`;
+          if (data.stack) {
+            dataStr += `\nStack: ${data.stack}`;
+          }
+        } else if (typeof data === 'object') {
+          try {
+            dataStr = ` ${JSON.stringify(data)}`;
+          } catch (e) {
+            dataStr = ` [Object that couldn't be stringified]`;
+          }
+        } else {
+          dataStr = ` ${data}`;
+        }
+      }
+      
       console.log(`[${timestamp}] ${level.toUpperCase()}:${dataStr} ${message}`);
     }
   }

@@ -87,7 +87,6 @@ export class ElectroluxApiClient extends ApiClient {
           refreshToken: this.refreshToken,
         }),
       });
-      console.log('!!!!', response);
 
       if (!response.ok) {
         throw new Error(`Token refresh failed: ${response.status} ${response.statusText}`);
@@ -166,14 +165,15 @@ export class ElectroluxApiClient extends ApiClient {
       });
 
       if (!response.ok) {
-        throw new Error(
-          `Failed to fetch appliance information: ${response.status} ${response.statusText}`
-        );
+        const errorMsg = `Failed to fetch appliance information: ${response.status} ${response.statusText}`;
+        logger.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       const applianceInfo: ElectroluxApplianceInfo = await response.json();
       return applianceInfo;
     } catch (error) {
+      // Log the actual error with details
       logger.error(`Failed to fetch information for appliance ${applianceId}`, error);
       throw error;
     }
@@ -202,14 +202,15 @@ export class ElectroluxApiClient extends ApiClient {
       console.log('*******', response);
 
       if (!response.ok) {
-        throw new Error(
-          `Failed to fetch appliance state: ${response.status} ${response.statusText}`
-        );
+        const errorMsg = `Failed to fetch appliance state: ${response.status} ${response.statusText}`;
+        logger.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       const stateResponse: ElectroluxApplianceState = await response.json();
       return stateResponse;
     } catch (error) {
+      // Log the actual error with details
       logger.error(`Failed to fetch state for appliance ${applianceId}`, error);
       throw error;
     }
@@ -275,12 +276,19 @@ export class ElectroluxApiClient extends ApiClient {
             const state = await this.getApplianceState(appliance.applianceId);
             return this.processApplianceData(appliance, info, state);
           } catch (error) {
+            // Create a detailed error message with the actual error
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            logger.error(
+              `Failed to fetch information for appliance ${appliance.applianceId}`,
+              error
+            );
+
             // Return a basic response for this appliance
             return {
               timestamp: new Date().toISOString(),
               applianceId: appliance.applianceId,
               name: appliance.applianceName,
-              error: 'Failed to fetch appliance data',
+              error: `Failed to fetch appliance data: ${errorMsg}`,
               connected: false,
             };
           }
@@ -289,7 +297,8 @@ export class ElectroluxApiClient extends ApiClient {
 
       return applianceData;
     } catch (error) {
-      logger.error('Error fetching data from Electrolux API', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Error fetching data from Electrolux API: ${errorMsg}`, error);
       throw error;
     }
   }

@@ -101,25 +101,30 @@ export class PollingService {
           // Fallback to general data topic
           topic = `${this.config.topicPrefix}/data`;
           await this.mqtt.publish(topic, JSON.stringify(data));
+          logger.debug(`Published message to topic: ${topic}`, { message: JSON.stringify(data) });
           logger.info('Published general data to MQTT', { topic });
         }
       }
 
       // Also publish a combined response to the general data topic
+      const summaryData = {
+        timestamp: new Date().toISOString(),
+        devices: dataArray.length,
+        appliances: dataArray.map(device => ({
+          id: device.applianceId,
+          name: device.name,
+          connected: device.connected || false,
+        })),
+      };
+      
       await this.mqtt.publish(
         `${this.config.topicPrefix}/data`,
-        JSON.stringify({
-          timestamp: new Date().toISOString(),
-          devices: dataArray.length,
-          appliances: dataArray.map(device => ({
-            id: device.applianceId,
-            name: device.name,
-            connected: device.connected || false,
-          })),
-        })
+        JSON.stringify(summaryData)
       );
+      logger.debug(`Published summary data`, { message: JSON.stringify(summaryData) });
     } catch (error) {
-      logger.error('Error in poll and publish cycle', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Error in poll and publish cycle: ${errorMsg}`, error);
     }
   }
 }
