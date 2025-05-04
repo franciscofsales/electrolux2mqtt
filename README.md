@@ -1,5 +1,9 @@
 # electrolux2mqtt
 
+<p align="center">
+  <img src="assets/small.png" alt="electrolux2mqtt logo" width="200"/>
+</p>
+
 ![Project Status: Experimental](https://img.shields.io/badge/Project%20Status-Experimental-yellow)
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/franciscofm)
 
