@@ -6,7 +6,7 @@
  * environment variable is set.
  */
 import { MqttConnector } from '../utils/mqtt.js';
-import { ApiClient, ApiResponse } from '../utils/api.js';
+import { ApiClient } from '../utils/api.js';
 import { ElectroluxApiResponse } from './types.js';
 import logger from '../utils/logger.js';
 
@@ -22,11 +22,19 @@ export class HomeAssistantService {
   private readonly api: ApiClient;
   private readonly config: HomeAssistantConfig;
   private readonly deviceRegistrations: Map<string, boolean> = new Map();
+  private readonly startTime: number = Date.now(); // Track when the service started
+  private bridgeStateInterval: NodeJS.Timeout | null = null; // Timer for bridge state updates
 
   constructor(mqtt: MqttConnector, api: ApiClient, config: HomeAssistantConfig) {
     this.mqtt = mqtt;
     this.api = api;
-    this.config = config;
+    this.config = {
+      ...config,
+      // Ensure defaults are set consistently
+      nodeId: config.nodeId || 'electrolux2mqtt',
+      discoveryPrefix: config.discoveryPrefix || 'homeassistant',
+      statusTopic: config.statusTopic || `${config.nodeId || 'electrolux2mqtt'}/status`,
+    };
   }
 
   /**
@@ -46,6 +54,9 @@ export class HomeAssistantService {
     // Publish availability status
     await this.publishAvailability('online');
 
+    // Register the bridge as a device
+    await this.registerBridge();
+
     // Setup shutdown hook to publish offline status when service stops
     process.on('SIGINT', this.handleShutdown.bind(this));
     process.on('SIGTERM', this.handleShutdown.bind(this));
@@ -58,6 +69,13 @@ export class HomeAssistantService {
    */
   private async handleShutdown(): Promise<void> {
     if (this.config.enabled) {
+      // Clear the bridge state interval if it exists
+      if (this.bridgeStateInterval) {
+        clearInterval(this.bridgeStateInterval);
+        this.bridgeStateInterval = null;
+      }
+
+      // Publish offline status
       await this.publishAvailability('offline');
       logger.info('Published offline status to Home Assistant');
     }
@@ -71,7 +89,7 @@ export class HomeAssistantService {
 
     try {
       await this.mqtt.publish(this.config.statusTopic, status, { retain: true });
-      logger.debug(`Published availability status: ${status}`);
+      logger.info(`Published availability status: ${status}`);
     } catch (error) {
       logger.error(`Failed to publish availability status: ${status}`, error);
     }
@@ -107,13 +125,14 @@ export class HomeAssistantService {
    */
   private async registerDevice(appliance: ElectroluxApiResponse): Promise<void> {
     // Skip if already registered
-    const applianceId = appliance.applianceId;
+    const originalId = appliance.applianceId;
+    const applianceId = this.sanitizeId(originalId);
     if (this.deviceRegistrations.has(applianceId)) return;
 
     try {
       // Extract device info
       const deviceInfo = {
-        identifiers: [applianceId],
+        identifiers: [originalId], // Keep original ID for device identifiers
         name: appliance.name || `Electrolux ${appliance.info.deviceType}`,
         manufacturer: 'Electrolux',
         model: `${appliance.info.modelName || 'Unknown'}${appliance.info.variant ? ` (${appliance.info.variant})` : ''}`,
@@ -125,13 +144,15 @@ export class HomeAssistantService {
       };
 
       // Create MQTT discovery configs based on available device state
-      await this.createSensors(applianceId, deviceInfo, appliance);
+      await this.createSensors(applianceId, originalId, deviceInfo, appliance);
 
       // Add to registered devices
       this.deviceRegistrations.set(applianceId, true);
-      logger.info(`Registered device with Home Assistant: ${appliance.name || applianceId}`);
+      logger.info(
+        `Registered device with Home Assistant: ${appliance.name || originalId} (${applianceId})`
+      );
     } catch (error) {
-      logger.error(`Failed to register device: ${applianceId}`, error);
+      logger.error(`Failed to register device: ${originalId} (${applianceId})`, error);
     }
   }
 
@@ -140,6 +161,7 @@ export class HomeAssistantService {
    */
   private async createSensors(
     applianceId: string,
+    originalId: string,
     deviceInfo: any,
     appliance: ElectroluxApiResponse
   ): Promise<void> {
@@ -149,9 +171,9 @@ export class HomeAssistantService {
     // Create connection state sensor
     await this.createSensor({
       applianceId,
+      originalId,
       deviceInfo,
       name: 'Connection',
-      uniqueId: `${applianceId}_connection`,
       deviceClass: 'connectivity',
       stateTopic,
       valueTemplate: '{{ value_json.connected }}',
@@ -165,9 +187,9 @@ export class HomeAssistantService {
     // Create a device status sensor that aggregates key information
     await this.createSensor({
       applianceId,
+      originalId,
       deviceInfo,
       name: 'Device Status',
-      uniqueId: `${applianceId}_device_status`,
       stateTopic,
       valueTemplate:
         appliance.info.deviceType === 'TUMBLE_DRYER'
@@ -181,9 +203,9 @@ export class HomeAssistantService {
     if (state.temperature !== undefined) {
       await this.createSensor({
         applianceId,
+        originalId,
         deviceInfo,
         name: 'Temperature',
-        uniqueId: `${applianceId}_temperature`,
         deviceClass: 'temperature',
         stateTopic,
         valueTemplate: '{{ value_json.temperature }}',
@@ -196,9 +218,9 @@ export class HomeAssistantService {
     if (state.humidity !== undefined) {
       await this.createSensor({
         applianceId,
+        originalId,
         deviceInfo,
         name: 'Humidity',
-        uniqueId: `${applianceId}_humidity`,
         deviceClass: 'humidity',
         stateTopic,
         valueTemplate: '{{ value_json.humidity }}',
@@ -217,9 +239,9 @@ export class HomeAssistantService {
       // Create program sensor based on device type
       await this.createSensor({
         applianceId,
+        originalId,
         deviceInfo,
         name: 'Program',
-        uniqueId: `${applianceId}_program`,
         stateTopic,
         valueTemplate:
           appliance.info.deviceType === 'TUMBLE_DRYER'
@@ -232,9 +254,9 @@ export class HomeAssistantService {
       // Create status sensor based on device type
       await this.createSensor({
         applianceId,
+        originalId,
         deviceInfo,
         name: 'Status',
-        uniqueId: `${applianceId}_status`,
         stateTopic,
         valueTemplate:
           appliance.info.deviceType === 'TUMBLE_DRYER'
@@ -251,9 +273,9 @@ export class HomeAssistantService {
       ) {
         await this.createSensor({
           applianceId,
+          originalId,
           deviceInfo,
           name: 'Remaining Time',
-          uniqueId: `${applianceId}_remaining_time`,
           stateTopic,
           valueTemplate:
             appliance.info.deviceType === 'TUMBLE_DRYER'
@@ -272,9 +294,9 @@ export class HomeAssistantService {
       if (state.doorState !== undefined) {
         await this.createSensor({
           applianceId,
+          originalId,
           deviceInfo,
           name: 'Door State',
-          uniqueId: `${applianceId}_door_state`,
           stateTopic,
           valueTemplate: '{{ value_json.doorState }}',
           icon: 'mdi:door',
@@ -286,9 +308,9 @@ export class HomeAssistantService {
       if (state.cyclePhase !== undefined) {
         await this.createSensor({
           applianceId,
+          originalId,
           deviceInfo,
           name: 'Cycle Phase',
-          uniqueId: `${applianceId}_cycle_phase`,
           stateTopic,
           valueTemplate: '{{ value_json.cyclePhase }}',
           icon: 'mdi:washing-machine',
@@ -300,9 +322,9 @@ export class HomeAssistantService {
       if (state.userSelections?.humidityTarget !== undefined) {
         await this.createSensor({
           applianceId,
+          originalId,
           deviceInfo,
           name: 'Humidity Target',
-          uniqueId: `${applianceId}_humidity_target`,
           stateTopic,
           valueTemplate: '{{ value_json.userSelections.humidityTarget }}',
           icon: 'mdi:water-percent',
@@ -368,9 +390,9 @@ export class HomeAssistantService {
       // Create a generic sensor for this state property
       await this.createSensor({
         applianceId,
+        originalId,
         deviceInfo,
         name: this.formatPropertyName(key),
-        uniqueId: `${applianceId}_${key}`,
         stateTopic,
         valueTemplate: `{{ value_json.${key} }}`,
         component: typeof value === 'boolean' ? 'binary_sensor' : 'sensor',
@@ -387,7 +409,7 @@ export class HomeAssistantService {
     applianceId: string;
     deviceInfo: any;
     name: string;
-    uniqueId: string;
+    uniqueId?: string; // Now optional as we'll generate it if not provided
     component: 'sensor' | 'binary_sensor';
     stateTopic: string;
     valueTemplate: string;
@@ -397,12 +419,20 @@ export class HomeAssistantService {
     entityCategory?: string;
     payloadOn?: string;
     payloadOff?: string;
+    originalId?: string; // Add original ID for generating uniqueId
   }): Promise<void> {
-    const discoveryTopic = `${this.config.discoveryPrefix}/${config.component}/${config.applianceId}/${config.uniqueId}/config`;
+    // If no uniqueId is provided, generate one using the sanitized original ID if available
+    const uniqueId =
+      config.uniqueId ||
+      (config.originalId
+        ? `${this.sanitizeId(config.originalId, true)}_${config.name.toLowerCase().replace(/\s+/g, '_')}`
+        : `${config.applianceId}_${config.name.toLowerCase().replace(/\s+/g, '_')}`);
+
+    const discoveryTopic = `${this.config.discoveryPrefix}/${config.component}/${config.applianceId}/${uniqueId.replace(/[^a-zA-Z0-9_\-]/g, '_')}/config`;
 
     const discoveryConfig: any = {
       name: config.name,
-      unique_id: config.uniqueId,
+      unique_id: uniqueId,
       state_topic: config.stateTopic,
       value_template: config.valueTemplate,
       availability_topic: this.config.statusTopic,
@@ -421,7 +451,7 @@ export class HomeAssistantService {
 
     try {
       await this.mqtt.publish(discoveryTopic, JSON.stringify(discoveryConfig), { retain: true });
-      logger.debug(`Published discovery config for ${config.name}`, { topic: discoveryTopic });
+      logger.info(`Published discovery config for ${config.name}`, { topic: discoveryTopic });
     } catch (error) {
       logger.error(`Failed to publish discovery config for ${config.name}`, error);
     }
@@ -442,7 +472,8 @@ export class HomeAssistantService {
    * Publish appliance state to Home Assistant
    */
   private async publishState(appliance: ElectroluxApiResponse): Promise<void> {
-    const applianceId = appliance.applianceId;
+    const originalId = appliance.applianceId;
+    const applianceId = this.sanitizeId(originalId);
     const stateTopic = `electrolux2mqtt/${applianceId}/state`;
 
     try {
@@ -454,9 +485,137 @@ export class HomeAssistantService {
       };
 
       await this.mqtt.publish(stateTopic, JSON.stringify(stateData), { retain: true });
-      logger.debug(`Published state for ${appliance.name || applianceId}`, { topic: stateTopic });
+      logger.info(`Published state for ${appliance.name || originalId} (${applianceId})`, {
+        topic: stateTopic,
+      });
     } catch (error) {
-      logger.error(`Failed to publish state for ${applianceId}`, error);
+      logger.error(`Failed to publish state for ${originalId} (${applianceId})`, error);
+    }
+  }
+
+  /**
+   * Register the electrolux2mqtt bridge as a device in Home Assistant
+   */
+  private async registerBridge(): Promise<void> {
+    const bridgeId = this.config.nodeId;
+    const bridgeStateTopic = `${bridgeId}/state`;
+
+    try {
+      // Define the bridge device info
+      const deviceInfo = {
+        identifiers: [bridgeId],
+        name: 'Electrolux2MQTT Bridge',
+        manufacturer: 'fsales',
+        model: 'Bridge',
+        sw_version: process.env.npm_package_version || '1.0.0',
+      };
+
+      // Create connection status sensor
+      await this.createSensor({
+        applianceId: bridgeId,
+        originalId: bridgeId, // Same as applianceId for bridge
+        deviceInfo,
+        name: 'Status',
+        deviceClass: 'connectivity',
+        stateTopic: this.config.statusTopic,
+        valueTemplate: '{{ value }}',
+        payloadOn: 'online',
+        payloadOff: 'offline',
+        entityCategory: 'diagnostic',
+        icon: 'mdi:bridge',
+        component: 'binary_sensor',
+      });
+
+      // Create version sensor
+      await this.createSensor({
+        applianceId: bridgeId,
+        originalId: bridgeId,
+        deviceInfo,
+        name: 'Version',
+        stateTopic: bridgeStateTopic,
+        valueTemplate: '{{ value_json.version }}',
+        entityCategory: 'diagnostic',
+        icon: 'mdi:package-variant',
+        component: 'sensor',
+      });
+
+      // Create uptime sensor
+      await this.createSensor({
+        applianceId: bridgeId,
+        originalId: bridgeId,
+        deviceInfo,
+        name: 'Uptime',
+        stateTopic: bridgeStateTopic,
+        valueTemplate: '{{ value_json.uptime }}',
+        unitOfMeasurement: 'seconds',
+        entityCategory: 'diagnostic',
+        icon: 'mdi:clock-outline',
+        component: 'sensor',
+      });
+
+      // Publish initial state
+      await this.publishBridgeState();
+
+      // Set up periodic state publishing
+      this.bridgeStateInterval = setInterval(() => this.publishBridgeState(), 60000); // Update every minute
+
+      logger.info('Registered electrolux2mqtt bridge with Home Assistant');
+    } catch (error) {
+      logger.error('Failed to register bridge device with Home Assistant', error);
+    }
+  }
+
+  /**
+   * Publish bridge state to Home Assistant
+   */
+  private async publishBridgeState(): Promise<void> {
+    const bridgeId = this.config.nodeId;
+    const bridgeStateTopic = `${bridgeId}/state`;
+
+    try {
+      const bridgeState = {
+        timestamp: new Date().toISOString(),
+        version: process.env.npm_package_version || '1.0.0',
+        uptime: Math.floor((Date.now() - this.startTime) / 1000),
+        devices: this.deviceRegistrations.size,
+      };
+
+      await this.mqtt.publish(bridgeStateTopic, JSON.stringify(bridgeState), { retain: true });
+      logger.info('Published bridge state', { topic: bridgeStateTopic });
+    } catch (error) {
+      logger.error('Failed to publish bridge state', error);
+    }
+  }
+
+  /**
+   * Sanitize an appliance ID to make it compatible with MQTT topics or Home Assistant entity IDs
+   *
+   * @param id The original ID to sanitize
+   * @param forUniqueId If true, applies less strict sanitization for unique IDs which can handle more characters
+   * @returns A sanitized ID safe for use in MQTT topics or Home Assistant entity IDs
+   */
+  private sanitizeId(id: string, forUniqueId: boolean = false): string {
+    if (!id) return 'unknown';
+
+    if (forUniqueId) {
+      // For unique IDs, we only need to ensure basic compatibility with Home Assistant entity IDs
+      // We can keep most characters but remove the most problematic ones
+      return id
+        .replace(/[\s,;\\]+/g, '_') // Replace spaces, commas, semicolons, backslashes with underscores
+        .replace(/[\/:?&=]+/g, '-') // Replace slashes, colons, etc. with dashes
+        .replace(/[^a-zA-Z0-9_\-\.]/g, '') // Remove any other characters that could cause problems
+        .replace(/^[0-9-]/, 'a$&') // Ensure ID doesn't start with a number or dash
+        .replace(/__+/g, '_'); // Replace multiple underscores with a single one
+    } else {
+      // For MQTT topics, we need to be very strict
+      return id
+        .replace(/[\s,:;\/\\]+/g, '_') // Replace spaces, commas, colons, semicolons, slashes with underscores
+        .replace(/[+]/g, 'plus') // Replace + with 'plus'
+        .replace(/[#]/g, 'hash') // Replace # with 'hash'
+        .replace(/[&?=]/g, '') // Remove &, ?, =
+        .replace(/[^a-zA-Z0-9_\-]/g, '') // Remove any other non-alphanumeric characters except underscore and dash
+        .replace(/^[0-9-]/, 'a$&') // Ensure ID doesn't start with a number or dash
+        .replace(/__+/g, '_'); // Replace multiple underscores with a single one
     }
   }
 }
@@ -480,7 +639,7 @@ export function createHomeAssistantServiceFromEnv(
 
   // Get Home Assistant configuration from environment variables
   const discoveryPrefix = process.env.HOME_ASSISTANT_DISCOVERY_PREFIX || 'homeassistant';
-  const nodeId = process.env.HOME_ASSISTANT_NODE_ID || 'homeassistant';
+  const nodeId = process.env.HOME_ASSISTANT_NODE_ID || 'electrolux2mqtt';
   const statusTopic = `${nodeId}/status`;
 
   return new HomeAssistantService(mqtt, api, {
