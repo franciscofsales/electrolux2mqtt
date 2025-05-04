@@ -2,20 +2,20 @@
 
 ![Project Status: Experimental](https://img.shields.io/badge/Project%20Status-Experimental-yellow)
 
-A Node.js service that integrates Electrolux appliances with MQTT, enabling monitoring and control of your devices through Home Assistant.
+A Node.js service that integrates Electrolux/AEG appliances with MQTT, enabling monitoring and control of your devices through Home Assistant.
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
 **This project is HIGHLY EXPERIMENTAL and in the EARLY STAGES of development.** It should be used with extreme caution and is not recommended for production environments.
 
 - It has only been tested with a **tumbler dryer** model
-- No guarantees are made about compatibility with other Electrolux appliance types
+- No guarantees are made about compatibility with other Electrolux/AEG appliance types
 - The API implementation may change without notice as the official Electrolux API evolves
 - Use at your own risk - no responsibility for any issues that may arise
 
 ## Overview
 
-This service periodically polls the Electrolux API and publishes device data to MQTT topics. It bridges the gap between Electrolux connected appliances and MQTT-based home automation systems, providing visibility into appliance status and limited control capabilities.
+This service periodically polls the Electrolux API and publishes device data to MQTT topics. It bridges the gap between Electrolux/AEG connected appliances and MQTT-based home automation systems, providing visibility into appliance status and limited control capabilities.
 
 ## Features
 
@@ -188,7 +188,7 @@ As this project is in its early stages, contributions are welcome! Please be awa
 
 ## Roadmap
 
-- Add support for more Electrolux appliance types
+- Add support for more Electrolux/AEG appliance types
 - Improve error handling and resilience
 - Add comprehensive test suite
 - Enhance Home Assistant integration
