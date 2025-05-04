@@ -13,6 +13,9 @@ import {
   ElectroluxApplianceInfo,
   ElectroluxApiResponse,
 } from './types.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 export class ElectroluxApiClient extends ApiClient {
   private readonly electroluxConfig: ApiClientConfig;
@@ -20,20 +23,123 @@ export class ElectroluxApiClient extends ApiClient {
   private refreshToken: string | null = null;
   private tokenExpiry: number = 0;
   private appliances: ElectroluxAppliance[] = [];
+  private stateConfigPath: string;
 
   constructor(config: ApiClientConfig) {
     super(config);
     this.electroluxConfig = config;
 
-    this.refreshToken = config.refreshToken;
+    // Set up the config file path
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    this.stateConfigPath = path.resolve(__dirname, '../../config/state.json');
+
+    // If the config file doesn't exist, initialize it with the refresh token from config
+    if (!fs.existsSync(this.stateConfigPath) && config.refreshToken) {
+      this.refreshToken = config.refreshToken;
+      // Initialize the config directory and file with the refresh token
+      this.saveDataToFile();
+      logger.info('Initialized state config file with refresh token from environment');
+    } else {
+      // Try to load existing tokens from config file
+      this.loadDataFromFile();
+
+      // If no tokens were loaded, use the ones from config
+      if (!this.refreshToken && config.refreshToken) {
+        this.refreshToken = config.refreshToken;
+        // Update the config file with the new refresh token
+        this.saveDataToFile();
+        logger.info('Updated state config file with refresh token from environment');
+      }
+    }
 
     // Validate required config
     if (!config.apiKey) {
       throw new Error('API key is required for Electrolux API');
     }
 
-    if (!config.refreshToken) {
+    if (!config.refreshToken && !this.refreshToken) {
       throw new Error('Refresh token is required for Electrolux API');
+    }
+  }
+
+  /**
+   * Load tokens from config file
+   */
+  private loadDataFromFile(): void {
+    try {
+      if (fs.existsSync(this.stateConfigPath)) {
+        const stateData = JSON.parse(fs.readFileSync(this.stateConfigPath, 'utf8'));
+
+        // Only set tokens if they exist in the file
+        if (stateData.refreshToken) {
+          this.refreshToken = stateData.refreshToken;
+          logger.debug('Loaded refresh token from state file');
+        }
+
+        if (stateData.accessToken && stateData.tokenExpiry) {
+          this.accessToken = stateData.accessToken;
+          this.tokenExpiry = stateData.tokenExpiry;
+          logger.debug('Loaded access token from state file');
+        }
+
+        // Load stored appliances if available
+        if (stateData.appliances && Array.isArray(stateData.appliances)) {
+          // Maintain basic appliance info even when offline
+          if (stateData.appliances.length > 0) {
+            this.appliances = stateData.appliances;
+            logger.debug(`Loaded ${this.appliances.length} appliances from state file`);
+          }
+        }
+      } else {
+        logger.debug('No state file found, will create one when tokens are refreshed');
+      }
+    } catch (error) {
+      logger.warn('Failed to load data from state file', error);
+      // Continue without the saved data
+    }
+  }
+
+  /**
+   * Save tokens to config file
+   */
+  private saveDataToFile(): void {
+    try {
+      // Create directory if it doesn't exist
+      const dir = path.dirname(this.stateConfigPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        logger.debug(`Created directory: ${dir}`);
+      }
+
+      // Save tokens to file
+      const stateData: Record<string, any> = {
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Only add tokens that exist
+      if (this.refreshToken) {
+        stateData.refreshToken = this.refreshToken;
+      }
+
+      if (this.accessToken) {
+        stateData.accessToken = this.accessToken;
+        stateData.tokenExpiry = this.tokenExpiry;
+      }
+
+      // Add appliance information if available
+      if (this.appliances && this.appliances.length > 0) {
+        stateData.appliances = this.appliances.map(appliance => ({
+          applianceId: appliance.applianceId,
+          applianceName: appliance.applianceName
+        }));
+        logger.debug('Adding appliance information to state file');
+      }
+
+      fs.writeFileSync(this.stateConfigPath, JSON.stringify(stateData, null, 2));
+      logger.debug('Saved tokens and appliance info to state file');
+    } catch (error) {
+      logger.error('Failed to save state to config file', error);
+      // Continue even if we couldn't save the tokens
     }
   }
 
@@ -99,6 +205,9 @@ export class ElectroluxApiClient extends ApiClient {
       this.refreshToken = authResponse.refreshToken;
       this.tokenExpiry = Date.now() + authResponse.expiresIn * 1000;
 
+      // Save updated tokens to the config file
+      this.saveDataToFile();
+
       logger.debug('Successfully refreshed access token');
     } catch (error) {
       logger.error('Failed to refresh access token', error);
@@ -124,7 +233,7 @@ export class ElectroluxApiClient extends ApiClient {
         method: 'GET',
         headers: new Headers({
           Authorization: `Bearer ${this.accessToken}`,
-          'X-API-Key': this.electroluxConfig.apiKey || '',
+          'X-API-Key': this.electroluxConfig.apiKey,
           Accept: 'application/json',
         }),
       });
@@ -135,6 +244,9 @@ export class ElectroluxApiClient extends ApiClient {
 
       const appliancesResponse: ElectroluxAppliance[] = await response.json();
       this.appliances = appliancesResponse;
+
+      // Save appliance information to the config file
+      this.saveDataToFile();
 
       logger.info(`Found ${this.appliances.length} Electrolux appliances`);
       return this.appliances;
@@ -154,12 +266,13 @@ export class ElectroluxApiClient extends ApiClient {
     try {
       logger.debug(`Fetching information for appliance ${applianceId}`);
 
-      const infoUrl = `${this.electroluxConfig.apiUrl}/api/v1/appliances/${applianceId}`;
+      const infoUrl = `${this.electroluxConfig.apiUrl}/api/v1/appliances/${applianceId}/info`;
+
       const response = await fetch(infoUrl, {
         method: 'GET',
         headers: new Headers({
           Authorization: `Bearer ${this.accessToken}`,
-          'X-API-Key': this.electroluxConfig.apiKey || '',
+          'X-API-Key': this.electroluxConfig.apiKey,
           Accept: 'application/json',
         }),
       });
@@ -198,8 +311,6 @@ export class ElectroluxApiClient extends ApiClient {
           Accept: 'application/json',
         }),
       });
-
-      console.log('*******', response);
 
       if (!response.ok) {
         const errorMsg = `Failed to fetch appliance state: ${response.status} ${response.statusText}`;
@@ -388,6 +499,9 @@ export class ElectroluxApiClient extends ApiClient {
 
 /**
  * Create an Electrolux API client from environment variables
+ *
+ * The client will automatically load and save tokens to the config directory
+ * to persist them across restarts.
  */
 export function createElectroluxApiClientFromEnv(): ElectroluxApiClient {
   // Required environment variables

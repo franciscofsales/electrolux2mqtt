@@ -12,6 +12,7 @@ npm-debug.log*
 # Environment variables
 .env
 .env.local
+config
 
 # IDE files
 .idea/
@@ -24,3 +25,7 @@ npm-debug.log*
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# mosquitto
+mosquito/*.db
+mosquito/*.log

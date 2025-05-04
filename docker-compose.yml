@@ -29,8 +29,7 @@ services:
     container_name: mqtt-broker
     restart: unless-stopped
     volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto:/mosquitto/config
     ports:
       - '1883:1883' # MQTT protocol port (for external clients)
 
